@@ -675,20 +675,224 @@ HAVING MIN(kq.diem_thi_giua_ky) >= 9;
 -- f. Đếm xem tương ứng với mỗi địa chỉ (của học sinh), số lượng học sinh đang ở mỗi địa chỉ là bao nhiêu em.
 SELECT dia_chi, COUNT(*) AS soLuongHocSinh
 FROM mon_hoc mh
-JOIN ket_qua_hoc_tap kq ON mh.ma_mh = kq.ma_mh
-GROUP BY mh.ten_mh
-HAVING MIN(kq.diem_thi_giua_ky) >= 9;
+JOIN hoc_sinh
+GROUP BY dia_chi;
 
 -- g. Liệt kê điểm thi cao nhất của từng môn học (dựa vào điểm thi cuối kỳ mà các học sinh đã từng thi).
+SELECT mh.ten_mh, MAX(kq.diem_thi_cuoi_ky) AS diemThiCaoNhat
+FROM mon_hoc mh
+JOIN ket_qua_hoc_tap kq ON mh.ma_mh = kq.ma_mh
+GROUP BY mh.ten_mh;
 
 -- h. Liệt kê điểm thi trung bình của từng môn học (dựa vào điểm thi cuối kỳ mà các học sinh đã từng thi).
+SELECT mh.ten_mh, AVG(kq.diem_thi_cuoi_ky) AS diemThiTrungBinh
+FROM mon_hoc mh
+JOIN ket_qua_hoc_tap kq ON mh.ma_mh = kq.ma_mh
+GROUP BY mh.ten_mh;
 
 -- i. Liệt kê những môn học có điểm thi trung bình cao nhất (dựa vào điểm thi cuối kỳ mà các học sinh đã từng thi).
 -- Gợi ý: có trường hợp nhiều hơn 1 môn học có điểm thi trung bình cao nhất (**).
-
+SELECT mh.ten_mh, AVG(kq.diem_thi_cuoi_ky) AS diemThiTrungBinh
+FROM mon_hoc mh
+JOIN ket_qua_hoc_tap kq ON mh.ma_mh = kq.ma_mh
+GROUP BY mh.ten_mh
+HAVING AVG(kq.diem_thi_cuoi_ky) = (
+    SELECT MAX(diem_tb)
+    FROM (
+        SELECT AVG(diem_thi_cuoi_ky) AS diem_tb
+        FROM ket_qua_hoc_tap
+        GROUP BY ma_mh
+    ) AS diem_tb_max
+);
+----------------
 -- j. Tính điểm thi trung bình của từng học sinh trong trường. Chỉ tính điểm trung bình cho những học sinh đã từng thi cuối kỳ cho ít nhất 1 môn. Dựa vào cột điểm thi cuối kỳ để tính.
+SELECT kq.ma_hs, hs.ho_ten_hs, AVG(kq.diem_thi_cuoi_ky) AS diemThiTrungBinh
+FROM hoc_sinh hs
+JOIN ket_qua_hoc_tap kq ON kq.ma_hs = hs.ma_hs
+GROUP BY kq.ma_hs, hs.ho_ten_hs
+HAVING COUNT(kq.diem_thi_cuoi_ky) >= 1;
 
 -- k. Tìm học sinh có điểm thi trung bình các môn học cao nhất của lớp 1A trong năm học 2022-2023. Nếu có nhiều hơn 1 em thỏa mãn yêu cầu thì sẽ xét ưu tiên theo họ tên (sắp xếp theo tên A-Z, chỉ ưu tiên cho 1 em đứng trước trong danh sách).
 -- Dựa vào cột điểm thi cuối kỳ để tính. (Gợi ý: tương tự câu i nhưng có thêm ORDER BY).
+SELECT kq.ma_hs, hs.ho_ten_hs, AVG(kq.diem_thi_cuoi_ky) AS diemThiTrungBinh
+FROM hoc_sinh hs
+JOIN ket_qua_hoc_tap kq ON kq.ma_hs = hs.ma_hs
+JOIN lop ON hs.ma_lop = lop.ma_lop
+WHERE lop.ten_lop = 'Lớp 1A' AND lop.nam_hoc = '2022-2023'
+GROUP BY kq.ma_hs, hs.ho_ten_hs
+ORDER BY diemThiTrungBinh DESC, hs.ho_ten_hs ASC
+LIMIT 1;
 
 -- l. Tìm họ tên của những giáo viên đã từng dạy những học sinh có điểm trung bình cao nhất (xét trên dữ liệu của bất kể môn gì, chỉ tính điểm thi cuối kỳ của học kỳ 2). (***)
+SELECT gv.ma_gv, gv.ho_ten_gv
+FROM giao_vien gv
+JOIN phu_trach_bo_mon ptbm ON gv.ma_gv = ptbm.ma_gvpt
+JOIN mon_hoc mh ON ptbm.ma_mh = mh.ma_mh
+JOIN ket_qua_hoc_tap kq ON mh.ma_mh = kq.ma_mh
+WHERE kq.hoc_ky = 2
+GROUP BY gv.ma_gv, gv.ho_ten_gv
+HAVING AVG(kq.diem_thi_cuoi_ky) = (
+    SELECT MAX(AVG(diem_thi_cuoi_ky))
+    FROM ket_qua_hoc_tap
+    WHERE hoc_ky = 2
+    GROUP BY ma_hs
+);
+-------
+/*----------------------LUYỆN TẬP VỀ SUBQUERY----------------------------*/
+-- a. Học sinh chưa từng thi môn nào
+SELECT ho_ten_hs
+FROM hoc_sinh
+WHERE ma_hs NOT IN (SELECT DISTINCT ma_hs FROM ket_qua_hoc_tap);
+
+-- b. Giáo viên chưa từng phụ trách môn nào
+SELECT ho_ten_gv
+FROM giao_vien
+WHERE ma_gv NOT IN (SELECT DISTINCT ma_gvpt FROM phu_trach_bo_mon);
+
+-- c. Giáo viên chưa từng chủ nhiệm lớp nào
+SELECT ho_ten_gv
+FROM giao_vien
+WHERE ma_gv NOT IN (SELECT DISTINCT ma_gvcn FROM lop);
+
+-- d. Môn học chưa từng được tổ chức thi lần nào
+SELECT ten_mh
+FROM mon_hoc
+WHERE ma_mh NOT IN (SELECT DISTINCT ma_mh FROM ket_qua_hoc_tap);
+
+-- e. Đếm tương ứng với mỗi địa chỉ, số lượng học sinh đang ở mỗi địa chỉ là bao nhiêu em. Chỉ hiển thị kết quả cho từng địa chỉ có ít nhất 5 học sinh đang ở đó.
+SELECT dia_chi, COUNT(*) AS so_luong
+FROM hoc_sinh
+GROUP BY dia_chi
+HAVING so_luong >= 5;
+
+-- f. Liệt kê điểm thi trung bình của từng môn học ( dựa vào điểm thi cuối kì của các học sinh đã thi ). Chỉ liệt kê những môn có điểm trung bình từ 5 đến 10.
+SELECT mh.ten_mh, AVG(kq.diem_thi_cuoi_ky) AS diem_trung_binh
+FROM mon_hoc mh
+JOIN ket_qua_hoc_tap kq ON mh.ma_mh = kq.ma_mh
+GROUP BY mh.ma_mh, mh.ten_mh
+HAVING diem_trung_binh BETWEEN 5 AND 10;
+
+-- g. Tính điểm trung bình của từng học sinh trong trường. Chỉ tính điểm trung bình cho những học sinh đã từng thi cuối kì cho ít nhất 1 môn. Dựa vào cột điểm cuối kì để tính. Chỉ hiển thị những học sinh có điểm cuối kì trên 8.
+SELECT hs.ma_hs, hs.ho_ten_hs, AVG(kq.diem_thi_cuoi_ky) AS diem_trung_binh
+FROM hoc_sinh hs
+JOIN ket_qua_hoc_tap kq ON hs.ma_hs = kq.ma_hs
+GROUP BY hs.ma_hs, hs.ho_ten_hs
+HAVING diem_trung_binh > 8;
+
+/*----------------------LUYỆN TẬP VỀ UNION----------------------------*/
+-- a. Học sinh nam ở Thanh Khê và học sinh nữ ở Hải Châu
+SELECT ho_ten_hs, gioi_tinh, dia_chi
+FROM hoc_sinh
+WHERE gioi_tinh = 'Nam' AND dia_chi LIKE '%Thanh Khê%'
+
+UNION
+
+SELECT ho_ten_hs, gioi_tinh, dia_chi
+FROM hoc_sinh
+WHERE gioi_tinh = 'Nữ' AND dia_chi LIKE '%Hải Châu%';
+
+-- b. Họ tên của học sinh và giáo viên trong toàn trường
+SELECT ho_ten_hs AS ho_ten, NULL AS nghe_nghiep, NULL AS ho_ten_gv
+FROM hoc_sinh
+
+UNION
+
+SELECT NULL AS ho_ten, NULL AS nghe_nghiep, ho_ten_gv
+FROM giao_vien;
+
+-- c. Họ tên, nghề nghiệp của học sinh và giáo viên trong toàn trường (Nghề nghiệp bao gồm Học sinh và giáo viên)
+SELECT ho_ten_hs AS ho_ten, 'Học sinh' AS nghe_nghiep
+FROM hoc_sinh
+
+UNION
+
+SELECT ho_ten_gv AS ho_ten, 'Giáo viên' AS nghe_nghiep
+FROM giao_vien;
+
+-- d. Những học sinh đang học ở năm 2019-2020 và những học sinh chưa từng thi môn Toán và tiếng Việt
+SELECT DISTINCT hs.ma_hs, hs.ho_ten_hs, hs.gioi_tinh, hs.dia_chi
+FROM hoc_sinh hs
+JOIN lop l ON hs.ma_lop = l.ma_lop
+LEFT JOIN ket_qua_hoc_tap kq ON hs.ma_hs = kq.ma_hs
+WHERE l.nam_hoc = '2022-2023'
+AND (kq.ma_mh IS NULL OR (kq.ma_mh NOT IN ('Toán', 'Tiếng Việt')));
+
+-- e. Thống kê điểm thi trung bình theo từng tháng trong năm 2019. Chỉ tính điểm trung bình dựa vào điểm thi các môn
+SELECT MONTH(kq.ngay_gio_thi_cuoi_ky) AS thang,
+       AVG((kq.diem_thi_cuoi_ky + COALESCE(kq.diem_thi_giua_ky, 0)) / 2) AS diem_tb
+FROM ket_qua_hoc_tap kq
+WHERE YEAR(kq.ngay_gio_thi_cuoi_ky) = 2023
+GROUP BY thang
+ORDER BY thang;
+
+/*----------------------LUYỆN TẬP VỀ LEFT JOIN----------------------------*/
+-- Hãy liệt kê:
+-- a. ma_lop, ten_lop, ma_gvcn, ho_ten_gv (chủ nhiệm) của tất cả các lớp trong trường. (Gợi ý: tất cả các lớp nghĩa là kể cả những lớp chưa được phân công GVCN).
+SELECT lop.ma_lop, lop.ten_lop, lop.ma_gvcn, giao_vien.ho_ten_gv
+FROM lop
+LEFT JOIN giao_vien ON lop.ma_gvcn = giao_vien.ma_gv;
+
+-- b. ma_hs, ho_ten_hs, hoc_ky, ma_mh, ten_mh, diem_thi_giua_ky, diem_thi_cuoi_ky của tất cả học sinh trong trường.
+SELECT hs.ma_hs, hs.ho_ten_hs, kq.hoc_ky, kq.ma_mh, mh.ten_mh, kq.diem_thi_giua_ky, kq.diem_thi_cuoi_ky
+FROM hoc_sinh hs
+LEFT JOIN ket_qua_hoc_tap kq ON hs.ma_hs = kq.ma_hs
+LEFT JOIN mon_hoc mh ON kq.ma_mh = mh.ma_mh;
+
+-- c. ma_hs, ho_ten_hs, ma_lop, ten_lop, ma_gvcn, ho_ten_gv (Chủ nhiệm) của tất cả học sinh trong trường. (Chú ý những trường hợp: học sinh chưa được phân lớp và lớp chưa được phân GVCN).
+SELECT hs.ma_hs, hs.ho_ten_hs, lop.ma_lop, lop.ten_lop, lop.ma_gvcn, gv.ho_ten_gv
+FROM hoc_sinh hs
+LEFT JOIN lop ON hs.ma_lop = lop.ma_lop
+LEFT JOIN giao_vien gv ON lop.ma_gvcn = gv.ma_gv;
+
+-- d. ma_gv, ho_ten_gv, ma_lop, ten_lop, ma_mh, hoc_ky, ten_mh của tất cả giáo viên trong trường.
+SELECT gv.ma_gv, gv.ho_ten_gv, ptbm.ma_lop, lop.ten_lop, ptbm.ma_mh, ptbm.hoc_ky, mh.ten_mh
+FROM giao_vien gv
+LEFT JOIN phu_trach_bo_mon ptbm ON gv.ma_gv = ptbm.ma_gvpt
+LEFT JOIN mon_hoc mh ON ptbm.ma_mh = mh.ma_mh
+LEFT JOIN lop ON ptbm.ma_lop = lop.ma_lop;
+
+/*----------------------LUYỆN TẬP VỀ RIGHT JOIN----------------------------*/
+-- Hãy liệt kê:
+-- a. ma_lop, ten_lop, ma_gvcn, ho_ten_gv (chủ nhiệm) của tất cả các lớp trong trường. (Gợi ý: tất cả các lớp nghĩa là kể cả những lớp chưa được phân công GVCN).
+SELECT lop.ma_lop, lop.ten_lop, lop.ma_gvcn, giao_vien.ho_ten_gv
+FROM lop
+RIGHT JOIN giao_vien ON lop.ma_gvcn = giao_vien.ma_gv;
+
+-- b. ma_hs, ho_ten_hs, hoc_ky, ma_mh, ten_mh, diem_thi_giua_ky, diem_thi_cuoi_ky của tất cả học sinh trong trường.
+SELECT hs.ma_hs, hs.ho_ten_hs, kq.hoc_ky, kq.ma_mh, mh.ten_mh, kq.diem_thi_giua_ky, kq.diem_thi_cuoi_ky
+FROM hoc_sinh hs
+RIGHT JOIN ket_qua_hoc_tap kq ON hs.ma_hs = kq.ma_hs
+RIGHT JOIN mon_hoc mh ON kq.ma_mh = mh.ma_mh;
+
+-- c. ma_hs, ho_ten_hs, ma_lop, ten_lop, ma_gvcn, ho_ten_gv (Chủ nhiệm) của tất cả học sinh trong trường. (Chú ý những trường hợp: học sinh chưa được phân lớp và lớp chưa được phân GVCN).
+SELECT hs.ma_hs, hs.ho_ten_hs, lop.ma_lop, lop.ten_lop, lop.ma_gvcn, gv.ho_ten_gv
+FROM hoc_sinh hs
+RIGHT JOIN lop ON hs.ma_lop = lop.ma_lop
+RIGHT JOIN giao_vien gv ON lop.ma_gvcn = gv.ma_gv;
+
+-- d. ma_gv, ho_ten_gv, ma_lop, ten_lop, ma_mh, hoc_ky, ten_mh của tất cả giáo viên trong trường.
+SELECT gv.ma_gv, gv.ho_ten_gv, ptbm.ma_lop, lop.ten_lop, ptbm.ma_mh, ptbm.hoc_ky, mh.ten_mh
+FROM giao_vien gv
+RIGHT JOIN phu_trach_bo_mon ptbm ON gv.ma_gv = ptbm.ma_gvpt
+RIGHT JOIN mon_hoc mh ON ptbm.ma_mh = mh.ma_mh
+RIGHT JOIN lop ON ptbm.ma_lop = lop.ma_lop;
+
+/*----------------------LUYỆN TẬP VỀ FULL JOIN----------------------------*/
+-- Hãy liệt kê:
+-- a. ma_hs, ho_ten_hs, ma_lop, ten_lop của tất cả học sinh và tất cả các lớp trong trường. (Gợi ý: lớp chưa có học sinh và học sinh chưa được phân lớp đều phải được trả về kết quả).
+
+-- b. ma_mh, ten_mh, ma_gv (phụ trách), ho_ten_gv (phụ trách) của tất cả những môn học và tất cả giáo viên trong trường. Kết quả trả về cần loại bỏ bớt những dòng trùng lặp (những dòng nào trùng nhau thì chỉ hiển thị kết quả 1 lần).
+
+/*----------------------LUYỆN TẬP VỀ LIMIT----------------------------*/
+-- a. Lấy danh sách học sinh trong lớp 1A, sắp xếp theo tên, bắt đầu từ kết quả thứ 11 và lấy 5 kết quả tiếp theo.
+
+-- b. Lấy thông tin giáo viên phụ trách bộ môn trong Lớp 5A, sắp xếp theo tên môn học và lấy tối đa 5 kết quả, bắt đầu từ kết quả thứ 6.
+
+/*----------------------LUYỆN TẬP VỀ EXISTS & IN----------------------------*/
+-- a. Lấy danh sách các học sinh có kết quả thi môn Toán học trong học kỳ 1
+
+-- b. Lấy danh sách các giáo viên chủ nhiệm có ít nhất một lớp học
+
+-- c. Lấy thông tin các học sinh thuộc lớp 1A hoặc lớp 1B
+
+-- d. Lấy thông tin các học sinh có điểm thi môn Toán học trong học kỳ 1 nằm trong danh sách (8.0, 8.5, 9.0)
